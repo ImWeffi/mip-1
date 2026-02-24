@@ -1,5 +1,5 @@
 [project]
-name = "mip-game1#47"
+name = "mip-game_1_47"
 version = "0"
 description = """\
 **Papildu prasības programmatūrai**\
@@ -21,11 +21,11 @@ Spēle beidzas, kad virkne paliek tukša. Uzvar spēlētājs, kam ir vairāk pun
 vienāds, tad rezultāts ir neizšķirts.\
 """
 authors = [
-    "Iaroslav Viazmitin <iaroslav.viazmitin@edu.rtu.lv>",
-    "Līna Skripko <lina.skripko@edu.rtu.lv>",
-    "Matīss Vasks <matiss.vasks@edu.rtu.lv>",
-    "Deivids Kārkliņš <matiss.vasks@edu.rtu.lv>",
-    "Nikita Karpovs <nikita.karpovs_1@edu.rtu.lv>",
+  {name = "Iaroslav Viazmitin", email = "Iaroslav.Viazmitin@edu.rtu.lv"},
+  {name = "Līna Skripko", email = "Lina.Skripko@edu.rtu.lv"},
+  {name = "Matīss Vasks", email = "Matiss.Vasks@edu.rtu.lv"},
+  {name = "Deivids Kārkliņš", email = "Deivids.Karklins@edu.rtu.lv"},
+  {name = "Nikita Karpovs", email = "Nikita.Karpovs_1@edu.rtu.lv"},
 ]
 requires-python = ">=3.9"
 dependencies = [
