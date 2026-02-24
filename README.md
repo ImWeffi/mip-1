@@ -1,4 +1,4 @@
-# "Mākslīga intelekta pamati" kursa 1. praktiskais darbs
+# "Mākslīgā intelekta pamati" kursa 1. praktiskais darbs
 
 Autori:
 
