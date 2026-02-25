@@ -1,0 +1,33 @@
+[project]
+name = "mip-game_1_47"
+version = "0"
+description = """\
+**Papildu prasības programmatūrai**\
+\
+Spēles sākumā cilvēks-spēlētājs norāda spēlē izmantojamas skaitļu virknes garumu, kas var būt\
+diapazonā no 15 līdz 20 skaitļiem. Spēles programmatūra gadījuma ceļā saģenerē skaitļu virkni\
+atbilstoši uzdotajam garumam, tajā iekļaujot skaitļus 1, 2, 3 un 4.\
+\
+**Spēles apraksts**\
+\
+Spēles sākumā ir dota ģenerētā skaitļu virkne. Katram spēlētājam ir 0 punktu. Spēlētāji izpilda\
+gājienus secīgi. Gājiena laikā spēlētājs:\
+\
+ * var paņemt jebkuru skaitli no virknes un pieskaitīt to savam punktu skaitam;\
+ * sadalīt «2» divos skaitļos «1» un «1», bet par to neiegūt punktus;\
+ * sadalīt «4» divos skaitļos «2» un «2» un par to pieskaitīt savam punktu skaitam 1 punktu.\
+\
+Spēle beidzas, kad virkne paliek tukša. Uzvar spēlētājs, kam ir vairāk punktu. Ja punktu skaits ir\
+vienāds, tad rezultāts ir neizšķirts.\
+"""
+authors = [
+  {name = "Iaroslav Viazmitin", email = "Iaroslav.Viazmitin@edu.rtu.lv"},
+  {name = "Līna Skripko", email = "Lina.Skripko@edu.rtu.lv"},
+  {name = "Matīss Vasks", email = "Matiss.Vasks@edu.rtu.lv"},
+  {name = "Deivids Kārkliņš", email = "Deivids.Karklins@edu.rtu.lv"},
+  {name = "Nikita Karpovs", email = "Nikita.Karpovs_1@edu.rtu.lv"},
+]
+requires-python = ">=3.9"
+dependencies = [
+    "pyqt6==6.8.1",
+]
