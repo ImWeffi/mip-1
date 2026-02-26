@@ -5,7 +5,7 @@ Autori:
 |       Iaroslav Viazmitin       |       Līna Skripko       |       Matīss Vasks       |       Deivids Kārkliņš       |        Nikita Karpovs        |
 |--------------------------------|--------------------------|--------------------------|------------------------------|------------------------------|
 |<Iaroslav.Viazmitin@edu.rtu.lv> |<Lina.Skripko@edu.rtu.lv> |<Matiss.Vasks@edu.rtu.lv> |<Deivids.Karklins@edu.rtu.lv> |<Nikita.Karpovs_1@edu.rtu.lv> |
-|            @RTUtniy            |            --            |       @matissvasks       |              --              |           @ImWeffi           | 
+|            @RTUtniy            |            --            |       @matissvasks       |         @231RDB183           |           @ImWeffi           | 
 ## Prasību apraksts
 
 > **Papildu prasības programmatūrai**
