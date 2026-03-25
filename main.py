@@ -3,7 +3,8 @@ from __future__ import annotations
 import math
 import random
 import sys
-from dataclasses import dataclass
+from time import perf_counter
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Literal, Optional
 
 from PyQt6.QtCore import QSize, QTimer
@@ -17,7 +18,6 @@ from Game_State import GameState
 
 @dataclass(frozen=True)
 class Action:
-    """Producable action for the game"""
     action_type: Literal["take", "split2", "split4"]
     index: int
 
@@ -25,16 +25,46 @@ class Action:
 @dataclass(frozen=True)
 class SolverState:
     sequence: tuple[int, ...]
-    scores: tuple[int, int]   # (user, ai)
-    current_player: int       # 0 user, 1 ai
+    scores: tuple[int, int]
+    current_player: int
 
     def is_terminal(self) -> bool:
         return len(self.sequence) == 0
 
 
+@dataclass
+class TreeNode:
+    state: SolverState
+    action: Optional[Action] = None
+    children: list["TreeNode"] = field(default_factory=list)
+    value: Optional[float] = None
+    depth: int = 0
+
+
+@dataclass
+class SearchStats:
+    generated_nodes: int = 0
+    evaluated_nodes: int = 0
+    total_move_time: float = 0.0
+    move_count: int = 0
+
+    def reset_search_stats(self) -> None:
+        self.generated_nodes = 0
+        self.evaluated_nodes = 0
+        self.last_move_time = 0.0
+
+    @property
+    def average_move_time(self) -> float:
+        if self.move_count == 0:
+            return 0.0
+        return self.total_move_time / self.move_count
+
+
 class NumberSequenceGame:
-    def __init__(self, max_depth: int = 6):
+    def __init__(self, max_depth: int = 4):
         self.max_depth = max_depth
+        self.stats = SearchStats()
+        self.last_tree_root: Optional[TreeNode] = None
 
     def initial_state(self, baseLength: int, starting_player: int) -> SolverState:
         sequence = tuple(random.randint(1, 4) for _ in range(baseLength))
@@ -43,6 +73,10 @@ class NumberSequenceGame:
             scores=(0, 0),
             current_player=starting_player
         )
+
+    def reset_search_stats(self) -> None:
+        self.stats.reset_search_stats()
+        self.last_tree_root = None
 
     def get_legal_actions(self, state: SolverState) -> List[Action]:
         actions: List[Action] = []
@@ -73,12 +107,12 @@ class NumberSequenceGame:
 
         elif action.action_type == "split2":
             if value != 2:
-                raise ValueError("\"split2\" drīkst izmantot tikai skaitlim 2.")
+                raise ValueError('"split2" drīkst izmantot tikai skaitlim 2.')
             seq[action.index:action.index + 1] = [1, 1]
 
         elif action.action_type == "split4":
             if value != 4:
-                raise ValueError("\"split4\" drīkst izmantot tikai skaitlim 4.")
+                raise ValueError('"split4" drīkst izmantot tikai skaitlim 4.')
             scores[player] += 1
             seq[action.index:action.index + 1] = [2, 2]
 
@@ -125,44 +159,135 @@ class NumberSequenceGame:
 
         return sorted(actions, key=priority, reverse=True)
 
+    def build_tree(
+        self,
+        state: SolverState,
+        depth: int,
+        maximizing_player: Optional[int] = None
+    ) -> TreeNode:
+      
+        if maximizing_player is None:
+            maximizing_player = state.current_player
+
+        self.reset_search_stats()
+        root = self._build_tree_recursive(state, depth, maximizing_player)
+        self.last_tree_root = root
+        return root
+
+    def _build_tree_recursive(
+        self,
+        state: SolverState,
+        depth: int,
+        maximizing_player: int,
+        action: Optional[Action] = None
+    ) -> TreeNode:
+        self.stats.generated_nodes += 1
+        node = TreeNode(state=state, action=action, depth=depth)
+
+        if state.is_terminal():
+            self.stats.evaluated_nodes += 1
+            node.value = self.evaluate_terminal(state, maximizing_player)
+            return node
+
+        if depth == 0:
+            self.stats.evaluated_nodes += 1
+            node.value = self.heuristic(state, maximizing_player)
+            return node
+
+        actions = self.order_actions(state, self.get_legal_actions(state))
+        child_values: list[float] = []
+
+        for next_action in actions:
+            next_state = self.apply_action(state, next_action)
+            child = self._build_tree_recursive(
+                next_state,
+                depth - 1,
+                maximizing_player,
+                next_action
+            )
+            node.children.append(child)
+            if child.value is not None:
+                child_values.append(child.value)
+
+        if child_values:
+            if state.current_player == maximizing_player:
+                node.value = max(child_values)
+            else:
+                node.value = min(child_values)
+
+        return node
+
     def minimax(
         self,
         state: SolverState,
         depth: int,
-        maximizing_player: int
+        maximizing_player: int,
+        node: Optional[TreeNode] = None
     ) -> tuple[float, Optional[Action]]:
+        if node is None:
+            node = TreeNode(state=state, depth=depth)
+            self.stats.generated_nodes += 1
+            self.last_tree_root = node
+
         if state.is_terminal():
-            return self.evaluate_terminal(state, maximizing_player), None
+            self.stats.evaluated_nodes += 1
+            value = self.evaluate_terminal(state, maximizing_player)
+            node.value = value
+            return value, None
 
         if depth == 0:
-            return self.heuristic(state, maximizing_player), None
+            self.stats.evaluated_nodes += 1
+            value = self.heuristic(state, maximizing_player)
+            node.value = value
+            return value, None
 
         actions = self.order_actions(state, self.get_legal_actions(state))
         is_max_turn = state.current_player == maximizing_player
-
         best_action: Optional[Action] = None
 
         if is_max_turn:
             best_value = -math.inf
+
             for action in actions:
                 next_state = self.apply_action(state, action)
-                value, _ = self.minimax(next_state, depth - 1, maximizing_player)
+                child = TreeNode(state=next_state, action=action, depth=depth - 1)
+                self.stats.generated_nodes += 1
+                node.children.append(child)
+
+                value, _ = self.minimax(
+                    next_state,
+                    depth - 1,
+                    maximizing_player,
+                    child
+                )
 
                 if value > best_value:
                     best_value = value
                     best_action = action
 
+            node.value = best_value
             return best_value, best_action
 
         best_value = math.inf
+
         for action in actions:
             next_state = self.apply_action(state, action)
-            value, _ = self.minimax(next_state, depth - 1, maximizing_player)
+            child = TreeNode(state=next_state, action=action, depth=depth - 1)
+            self.stats.generated_nodes += 1
+            node.children.append(child)
+
+            value, _ = self.minimax(
+                next_state,
+                depth - 1,
+                maximizing_player,
+                child
+            )
 
             if value < best_value:
                 best_value = value
                 best_action = action
 
+        node.value = best_value
         return best_value, best_action
 
     def alphabeta(
@@ -171,13 +296,25 @@ class NumberSequenceGame:
         depth: int,
         alpha: float,
         beta: float,
-        maximizing_player: int
+        maximizing_player: int,
+        node: Optional[TreeNode] = None
     ) -> tuple[float, Optional[Action]]:
+        if node is None:
+            node = TreeNode(state=state, depth=depth)
+            self.stats.generated_nodes += 1
+            self.last_tree_root = node
+
         if state.is_terminal():
-            return self.evaluate_terminal(state, maximizing_player), None
+            self.stats.evaluated_nodes += 1
+            value = self.evaluate_terminal(state, maximizing_player)
+            node.value = value
+            return value, None
 
         if depth == 0:
-            return self.heuristic(state, maximizing_player), None
+            self.stats.evaluated_nodes += 1
+            value = self.heuristic(state, maximizing_player)
+            node.value = value
+            return value, None
 
         actions = self.order_actions(state, self.get_legal_actions(state))
         is_max_turn = state.current_player == maximizing_player
@@ -185,10 +322,20 @@ class NumberSequenceGame:
 
         if is_max_turn:
             value = -math.inf
+
             for action in actions:
                 next_state = self.apply_action(state, action)
+                child = TreeNode(state=next_state, action=action, depth=depth - 1)
+                self.stats.generated_nodes += 1
+                node.children.append(child)
+
                 child_value, _ = self.alphabeta(
-                    next_state, depth - 1, alpha, beta, maximizing_player
+                    next_state,
+                    depth - 1,
+                    alpha,
+                    beta,
+                    maximizing_player,
+                    child
                 )
 
                 if child_value > value:
@@ -199,13 +346,24 @@ class NumberSequenceGame:
                 if beta <= alpha:
                     break
 
+            node.value = value
             return value, best_action
 
         value = math.inf
+
         for action in actions:
             next_state = self.apply_action(state, action)
+            child = TreeNode(state=next_state, action=action, depth=depth - 1)
+            self.stats.generated_nodes += 1
+            node.children.append(child)
+
             child_value, _ = self.alphabeta(
-                next_state, depth - 1, alpha, beta, maximizing_player
+                next_state,
+                depth - 1,
+                alpha,
+                beta,
+                maximizing_player,
+                child
             )
 
             if child_value < value:
@@ -216,27 +374,54 @@ class NumberSequenceGame:
             if beta <= alpha:
                 break
 
+        node.value = value
         return value, best_action
 
     def best_move(self, state: SolverState, algorithm: str = "alphabeta") -> Optional[Action]:
         maximizing_player = state.current_player
         algorithm = algorithm.lower()
 
+        self.reset_search_stats()
+
+        start = perf_counter()
+
         if algorithm == "minmax":
-            _, action = self.minimax(state, depth=4, maximizing_player=maximizing_player)
+            _, action = self.minimax(
+                state,
+                depth=4,
+                maximizing_player=maximizing_player
+            )
         elif algorithm == "alphabeta":
             _, action = self.alphabeta(
-                state, self.max_depth, -math.inf, math.inf, maximizing_player
+                state,
+                4,
+                -math.inf,
+                math.inf,
+                maximizing_player
             )
         else:
             raise ValueError("Algoritmam jābūt 'minmax' vai 'alphabeta'.")
 
+        elapsed = perf_counter() - start
+        self.stats.last_move_time = elapsed
+        self.stats.total_move_time += elapsed
+        self.stats.move_count += 1
+
         return action
+
+    def get_experiment_data(self) -> dict[str, Any]:
+        return {
+            "generated_nodes": self.stats.generated_nodes,
+            "evaluated_nodes": self.stats.evaluated_nodes,
+            "total_move_time": self.stats.total_move_time,
+            "average_move_time": self.stats.average_move_time,
+            "last_move_time": self.stats.last_move_time,
+            "move_count": self.stats.move_count,
+            "tree_root": self.last_tree_root,
+        }
 
 
 class GameDispatcher:
-    """Connector between frontend and backend"""
-
     def __init__(self):
         self.baseLength: int = 15
 
@@ -246,21 +431,27 @@ class GameDispatcher:
             Literal["SendValue", "Execute"]
         ] = {}
 
-        self.algorithm: Literal['minmax', 'alphabeta'] | None
+        self.algorithm: Literal["minmax", "alphabeta"] | None = None
         self.algorithmDependedFunctions: Dict[
             Callable[..., Any],
             Literal["SendValue", "Execute"]
         ] = {}
 
-        self.engine = NumberSequenceGame(max_depth=6)
+        self.engine = NumberSequenceGame(max_depth=4)
         self.state = GameState()
         self.window: Optional[QWidget] = None
-        self.startingPlayer: Literal[0, 1] = 0         # 0 -> Human; 1 -> AI
+        self.startingPlayer: Literal[0, 1] = 0
+
         self.humanWins: int = 0
         self.aiWins: int = 0
 
-    def setStartingPlayer(self, int: Literal[0, 1]) -> None:
-        self.startingPlayer = int
+        self.game_generated_nodes: int = 0
+        self.game_evaluated_nodes: int = 0
+        self.game_ai_total_time: float = 0.0
+        self.game_ai_move_count: int = 0
+
+    def setStartingPlayer(self, value: Literal[0, 1]) -> None:
+        self.startingPlayer = value
 
     def set_window(self, window: QWidget) -> None:
         self.window = window
@@ -270,14 +461,6 @@ class GameDispatcher:
         function: Callable[..., Any],
         activationRule: Literal["SendValue", "Execute"]
     ) -> None:
-        """Saves function in dictionary to call it after AI algorithm change.
-        
-        :param Callable[..., Any] function:
-        Function to be called after algorithm change
-
-        :param Literal["SendValue", "Execute"] activationRule:
-        Is responsible to send new game state value or not."""
-
         self.algorithmDependedFunctions[function] = activationRule
 
     def gameStateChangeSubscriber(
@@ -285,14 +468,6 @@ class GameDispatcher:
         function: Callable[..., Any],
         activationRule: Literal["SendValue", "Execute"]
     ) -> None:
-        """Saves function in dictionary to call it after game state change.
-        
-        :param Callable[..., Any] function:
-        Function to be called after game state change
-
-        :param Literal["SendValue", "Execute"] activationRule:
-        Is responsible to send new game state value or not."""
-
         self.activeStatusDependedFunctions[function] = activationRule
 
     def _notifyAlgorithmChange(self) -> None:
@@ -311,7 +486,7 @@ class GameDispatcher:
         return self.baseLength
 
     def _solverToView(self, solver_state: SolverState) -> GameState:
-        return GameState(
+        new_state = GameState(
             sequence=solver_state.sequence,
             user_score=solver_state.scores[0],
             ai_score=solver_state.scores[1],
@@ -319,6 +494,9 @@ class GameDispatcher:
             algorithm=self.algorithm,
             is_finished=(len(solver_state.sequence) == 0),
         )
+        new_state.userWins = self.state.userWins
+        new_state.aiWins = self.state.aiWins
+        return new_state
 
     def _viewToSolver(self) -> SolverState:
         return SolverState(
@@ -333,21 +511,35 @@ class GameDispatcher:
         if self.state.user_score > self.state.ai_score:
             self.state.incrementHumanWins()
             self.state.winner_text = (
-                f"Spēle beigusies. Jūs uzvarējāt, rezultāts ir {self.state.user_score}:{self.state.ai_score}."
+                f"Spēle beigusies. Jūs uzvarējāt, rezultāts ir "
+                f"{self.state.user_score}:{self.state.ai_score}."
             )
         elif self.state.ai_score > self.state.user_score:
             self.state.incrementAiWins()
             self.state.winner_text = (
-                f"Spēle beigusies. Uzvarēja MI, rezultāts ir {self.state.user_score}:{self.state.ai_score}."
+                f"Spēle beigusies. Uzvarēja MI, rezultāts ir "
+                f"{self.state.user_score}:{self.state.ai_score}."
             )
         else:
             self.state.winner_text = (
-                f"Spēle beigusies neizšķirti. Rezultāts ir {self.state.user_score}:{self.state.ai_score}."
+                f"Spēle beigusies neizšķirti. Rezultāts ir "
+                f"{self.state.user_score}:{self.state.ai_score}."
             )
 
         self.isActive = False
         self._notifyGameStateChange()
+        avg_ai_time = (
+        self.game_ai_total_time / self.game_ai_move_count
+        if self.game_ai_move_count > 0 else 0.0
+        )
 
+        print("\n===== SPELES REZULTATI =====")
+        print(f"Kopejais genereto virsotnu skaits: {self.game_generated_nodes}")
+        print(f"Kopejais noverteto virsotnu skaits: {self.game_evaluated_nodes}")
+        print(f"MI videjais laiks gajienam: {avg_ai_time:.6f}s")
+        print(f"Sakuma virknes garums: {self.baseLength}")
+        print(f"Algoritms: {self.algorithm}")
+        print("============================\n")
         if self.window is not None:
             QMessageBox.information(self.window, "Spēle beidzās", self.state.winner_text)
 
@@ -366,17 +558,10 @@ class GameDispatcher:
         except ValueError as exc:
             raise ValueError(f"Skaitlis {value} virknē nav pieejams.") from exc
 
-    def doUserTurn(self, action: Literal["TAKE1", "TAKE2", "TAKE3", "TAKE4", "SPLIT2", "SPLIT4"]) -> None:
-        """:param Literal[\
-            "TAKE1",\
-            "TAKE2",\
-            "TAKE3",\
-            "TAKE4",\
-            "SPLIT2",\
-            "SPLIT4"\
-        ] action:
-        Argument for one of 6 defined game action names,
-        which player can use when it is his turn"""
+    def doUserTurn(
+        self,
+        action: Literal["TAKE1", "TAKE2", "TAKE3", "TAKE4", "SPLIT2", "SPLIT4"]
+    ) -> None:
         if not self.isActive or not self.state.user_turn or self.state.is_finished:
             return
 
@@ -411,6 +596,13 @@ class GameDispatcher:
         solver_state = self._viewToSolver()
         ai_action = self.engine.best_move(solver_state, self.algorithm or "alphabeta")
 
+        data = self.engine.get_experiment_data()
+
+        self.game_generated_nodes += data["generated_nodes"]
+        self.game_evaluated_nodes += data["evaluated_nodes"]
+        self.game_ai_total_time += data["last_move_time"]
+        self.game_ai_move_count += 1
+        
         if ai_action is None:
             self._finishGame()
             return
@@ -418,40 +610,60 @@ class GameDispatcher:
         self._applySolverAction(ai_action)
 
     def doConfigurateAi(self, action: Literal["minmax", "alphabeta"]) -> None:
-        """This function updates selected AI algorithm value and call functions,
-        which was declared in `self.algorithmDependedFunctions` dict"""
-
         self.algorithm = action
         self._notifyAlgorithmChange()
 
     def getGameState(self) -> GameState:
         return self.state
 
+    def getExperimentData(self) -> dict[str, Any]:
+        return self.engine.get_experiment_data()
+
+    def buildExperimentTree(self, depth: int | None = None) -> Optional[TreeNode]:
+        if self.state.is_finished:
+            return None
+
+        solver_state = self._viewToSolver()
+        root = self.engine.build_tree(
+            solver_state,
+            depth if depth is not None else self.engine.max_depth,
+            solver_state.current_player
+        )
+        return root
+
     def changeActiveState(self) -> None:
-        """This function reverts game active state and call functions,
-        which was declared in `self.activeStatusDependedFunctions` dict"""
         if self.algorithm is None:
             return
+        
+        self.game_generated_nodes = 0
+        self.game_evaluated_nodes = 0
+        self.game_ai_total_time = 0.0
+        self.game_ai_move_count = 0
+
+        prev_user_wins = self.state.userWins
+        prev_ai_wins = self.state.aiWins
 
         self.state = self._solverToView(
             self.engine.initial_state(self.baseLength, starting_player=self.startingPlayer)
         )
+
+        self.state.userWins = prev_user_wins
+        self.state.aiWins = prev_ai_wins
+
         self.state.algorithm = self.algorithm
         self.state.winner_text = ""
         self.state.is_finished = False
         self.isActive = True
         self._notifyGameStateChange()
 
-    def getActiveState(self):
-        return self.isActive
+        if not self.state.user_turn:
+            QTimer.singleShot(200, self._doAiTurn)
 
 
 GAME_DISPATCHER = GameDispatcher()
 
 
 class MainWindow(QWidget):
-    """Application window"""
-
     def __init__(self):
         super().__init__()
 
@@ -489,13 +701,11 @@ class MainWindow(QWidget):
         self.layout.addWidget(self.userInputWidget, 1, 0, 1, 1)
         self.layout.addWidget(self.aiIoWidget, 1, 1, 1, 1)
 
-
 def main():
     app = QApplication(sys.argv)
     gameWindow = MainWindow()
     gameWindow.show()
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()

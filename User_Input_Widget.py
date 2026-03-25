@@ -78,11 +78,7 @@ class UserInputWidget(QWidget):
         self.refreshFromState()
 
     def updateAvailability(self, isActive: bool) -> None:
-        """Updates availability of widget.
-        
-        :param bool isActive:
-        Is responsible for widget availability when game activates and disactivates.\
-        If true (=> game is active) and it is user turn, inputs are available."""
+     
         self.refreshFromState()
 
     def refreshFromState(self) -> None:

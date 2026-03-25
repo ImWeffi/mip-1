@@ -4,7 +4,7 @@ from Game_State import GameState
 from PyQt6.QtWidgets import QFormLayout, QLabel, QRadioButton, QVBoxLayout, QWidget
 
 class AlgorithmSelectionWidget(QWidget):
-    """Subwidget (form) for algorithm selection"""
+    
     def __init__(
         self,
         doConfigurateAi: Callable[
@@ -43,12 +43,7 @@ class AlgorithmSelectionWidget(QWidget):
         self._gameStateChangeSubscriber(self._updateAvailability, "SendValue")
 
     def _updateAvailability(self, isActive: bool) -> None:
-        """Updates availability of widget.
-        
-        :param bool isActive:
-        Is responsible for widget availability when game activates and disactivates.
-        If true (=> game is active), inputs are static."""
-
+       
         self.radioMinMax.setDisabled(isActive)
         self.radioAlphaBeta.setDisabled(isActive)
 
@@ -59,7 +54,7 @@ class AlgorithmSelectionWidget(QWidget):
         self._doConfigurateAi('alphabeta')
 
 class FirstPlayerSelectionWidget(QWidget):
-    """Subwidget (form) for first player selection"""
+    
     def __init__(
         self,
         startingPlayerSetter: Callable[[Literal[0, 1]], None]
@@ -92,7 +87,7 @@ class FirstPlayerSelectionWidget(QWidget):
 
 
 class AIcfgWidget(QWidget):
-    """Widget for user preconfiguration for AI"""
+
     def __init__(
             self,
             doConfigurateAi: Callable[
